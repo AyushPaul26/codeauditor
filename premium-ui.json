@@ -1,0 +1,20 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src/ui", "media"],
+  "locale": "en",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Form", "Scrollbar"],
+  "ownership": { "Form": "authored", "Scrollbar": "authored" },
+  "requiredCommands": ["unit", "browser", "typecheck", "build", "format"],
+  "commands": {
+    "unit": "npm test",
+    "browser": "npm run test:browser",
+    "typecheck": "npm run typecheck",
+    "build": "npm run compile",
+    "format": "npm run format:check"
+  },
+  "evidence": {
+    "failurePaths": "tests/browser/panel.spec.ts",
+    "form": "tests/unit/ui-html.test.ts"
+  }
+}

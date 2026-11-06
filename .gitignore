@@ -1,0 +1,16 @@
+node_modules/
+dist/
+out/
+artifacts/
+.vscode-test/
+.superpowers/
+.cache/
+.env
+.env.*
+!.env.example
+*.gguf
+*.log
+coverage/
+playwright-report/
+premium-audit.json
+.DS_Store

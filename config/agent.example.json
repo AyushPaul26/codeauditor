@@ -1,0 +1,17 @@
+{
+  "name": "codeauditor-primary",
+  "description": "Review-first local coding agent.",
+  "manifestFile": "agents/codeauditor.json",
+  "providerManifestExample": {
+    "name": "codeauditor-local-primary",
+    "type": "custom",
+    "baseUrl": "http://127.0.0.1:8080/v1",
+    "models": [
+      {
+        "name": "local-model",
+        "modelId": "qwen3-1.7b",
+        "properties": { "contextLength": 4096, "maxOutputTokens": 1024 }
+      }
+    ]
+  }
+}

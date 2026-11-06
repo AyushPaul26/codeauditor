@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "primary": {
+    "llamaServerPath": "C:\\Users\\YOUR_NAME\\AppData\\Local\\CodeAuditor\\bin\\llama-server.exe",
+    "llamaServerSha256": "REPLACE_WITH_VERIFIED_BINARY_SHA256",
+    "modelPath": "C:\\Users\\YOUR_NAME\\AppData\\Local\\CodeAuditor\\models\\Qwen3-1.7B-Q4_K_M.gguf",
+    "modelSha256": "REPLACE_WITH_PUBLISHER_MODEL_SHA256",
+    "modelId": "qwen3-1.7b",
+    "port": 8080
+  },
+  "fallback": {
+    "llamaServerPath": "C:\\Users\\YOUR_NAME\\AppData\\Local\\CodeAuditor\\bin\\llama-server.exe",
+    "llamaServerSha256": "REPLACE_WITH_VERIFIED_BINARY_SHA256",
+    "modelPath": "C:\\Users\\YOUR_NAME\\AppData\\Local\\CodeAuditor\\models\\SECOND_QWEN3_MODEL.gguf",
+    "modelSha256": "REPLACE_WITH_PUBLISHER_MODEL_SHA256",
+    "modelId": "qwen3-backup",
+    "port": 8081
+  },
+  "harness": { "url": "http://127.0.0.1:8790" },
+  "mcp": {
+    "port": 8792,
+    "token": "GENERATED_BY_SETUP_DO_NOT_COPY_THIS_PLACEHOLDER"
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "name": "codeauditor-local",
+  "displayName": "CodeAuditor Local",
+  "description": "Review-first local coding agent powered by TrueForge.",
+  "version": "0.1.0",
+  "publisher": "AyushPaul26",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=22.14.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AyushPaul26/codeauditor.git"
+  },
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onView:codeauditor.agent"
+  ],
+  "scripts": {
+    "compile": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:extension": "node scripts/testExtension.mjs",
+    "test:browser": "playwright test",
+    "format": "prettier --write src scripts media tests .vscode *.json *.ts *.md docs agents config",
+    "format:check": "prettier --check src scripts media tests .vscode *.json *.ts *.md docs agents config",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "doctor": "node scripts/doctor.mjs",
+    "setup:local": "node scripts/setupLocal.mjs",
+    "model:start": "node scripts/startModel.mjs",
+    "model:fallback": "node scripts/startModel.mjs --fallback",
+    "harness:start": "node scripts/startHarness.mjs",
+    "harness:configure": "node scripts/configureHarness.mjs",
+    "fixtures:prepare": "node scripts/prepareFixture.mjs",
+    "package:vsix": "node scripts/package.mjs",
+    "vscode:prepublish": "npm run compile"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeauditor.open",
+        "title": "CodeAuditor: Open Agent"
+      },
+      {
+        "command": "codeauditor.inlineEdit",
+        "title": "CodeAuditor: Edit Selection"
+      },
+      {
+        "command": "codeauditor.cancel",
+        "title": "CodeAuditor: Cancel Run"
+      },
+      {
+        "command": "codeauditor.review",
+        "title": "CodeAuditor: Review Changes"
+      },
+      {
+        "command": "codeauditor.undo",
+        "title": "CodeAuditor: Undo Last Applied Change"
+      },
+      {
+        "command": "codeauditor.status",
+        "title": "CodeAuditor: Check Connection"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codeauditor.inlineEdit",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection && editorTextFocus"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeauditor",
+          "title": "CodeAuditor",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeauditor": [
+        {
+          "type": "webview",
+          "id": "codeauditor.agent",
+          "name": "Agent"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeAuditor",
+      "properties": {
+        "codeauditor.trueforgeUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8790",
+          "scope": "machine",
+          "description": "Local TrueForge server URL."
+        },
+        "codeauditor.agentId": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Configured TrueForge agent ID."
+        },
+        "codeauditor.fallbackAgentId": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Optional TrueForge agent ID for automatic fallback."
+        },
+        "codeauditor.mcpPort": {
+          "type": "number",
+          "default": 8792,
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "machine",
+          "description": "Loopback workspace MCP port. One active workspace per port."
+        },
+        "codeauditor.contextTokens": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 2048,
+          "maximum": 32768,
+          "scope": "machine",
+          "description": "Total model context budget, including output and tool overhead."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Workspace tools require a trusted project."
+    },
+    "virtualWorkspaces": false
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@truefoundry/trueforge-sdk": "0.184.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@truefoundry/trueforge": "0.184.2",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
+    "prettier": "3.6.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
