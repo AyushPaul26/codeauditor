@@ -117,13 +117,11 @@
           "scope": "machine",
           "description": "Optional TrueForge agent ID for automatic fallback."
         },
-        "codeauditor.mcpPort": {
-          "type": "number",
-          "default": 8792,
-          "minimum": 1024,
-          "maximum": 65535,
+        "codeauditor.pythonPath": {
+          "type": "string",
+          "default": "",
           "scope": "machine",
-          "description": "Loopback workspace MCP port. One active workspace per port."
+          "description": "Absolute Python interpreter path for approved project checks. Managed Flask fixtures select their external venv automatically."
         },
         "codeauditor.contextTokens": {
           "type": "number",
@@ -131,7 +129,7 @@
           "minimum": 2048,
           "maximum": 32768,
           "scope": "machine",
-          "description": "Total model context budget, including output and tool overhead."
+          "description": "Context window used to plan retrieval; must not exceed the configured TrueForge model's context length. Token counts are estimates."
         }
       }
     }

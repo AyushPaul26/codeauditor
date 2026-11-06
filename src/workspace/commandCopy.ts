@@ -118,6 +118,60 @@ export interface CommandCopy {
   cleanup(): Promise<void>;
 }
 
+/** Explicit public test data supplied from a pinned fixture, never live .env files. */
+export interface PublicCommandFixture {
+  readonly path: string;
+  readonly text: string;
+}
+
+function validatePublicFixtures(
+  fixtures: ReadonlyArray<PublicCommandFixture>,
+): PublicCommandFixture[] {
+  if (!Array.isArray(fixtures) || fixtures.length > MAX_FILES)
+    throw new Error("Public command fixtures exceed the file limit.");
+  const seen = new Set<string>();
+  let bytes = 0;
+  return fixtures.map((fixture) => {
+    if (
+      !fixture ||
+      typeof fixture.path !== "string" ||
+      typeof fixture.text !== "string"
+    )
+      throw new Error(
+        "Public command fixtures require relative paths and text.",
+      );
+    const relative = commandRelativePath(fixture.path);
+    const parts = relative.split("/");
+    if (
+      !/^(?:tests|test|__tests__)\//.test(relative) ||
+      !/^\.env(?:\..+)?$/.test(parts.at(-1)!) ||
+      /[\x00-\x1f<>:"|?*]/.test(relative) ||
+      parts.some(
+        (part) =>
+          excludedDirectories.has(part.toLowerCase()) ||
+          /[. ]$/.test(part) ||
+          /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part),
+      )
+    )
+      throw new Error(
+        "Public command fixtures must be dotenv files under tests/, test/, or __tests__/ with safe relative paths.",
+      );
+    const identity = relative.toLowerCase();
+    if (seen.has(identity))
+      throw new Error(`Duplicate public command fixture path: ${relative}`);
+    seen.add(identity);
+    const size = Buffer.byteLength(fixture.text);
+    if (fixture.text.includes("\0"))
+      throw new Error(`Public command fixture must be text: ${relative}`);
+    if (size > MAX_FILE_BYTES)
+      throw new Error(`Public command fixture exceeds 1 MiB: ${relative}`);
+    bytes += size;
+    if (bytes > MAX_COPY_BYTES)
+      throw new Error("Public command fixtures exceed the 32 MiB copy limit.");
+    return { path: relative, text: fixture.text };
+  });
+}
+
 /**
  * Isolates ordinary project outputs, not hostile code. Trusted Python tests can
  * still access absolute paths or the network; this is not an OS security sandbox.
@@ -125,13 +179,18 @@ export interface CommandCopy {
 export async function createCommandCopy(
   adapter: WorkspaceAdapter,
   overlay?: (path: string) => Promise<DocumentSnapshot>,
+  publicFixtures: ReadonlyArray<PublicCommandFixture> = [],
 ): Promise<CommandCopy> {
+  const fixtures = validatePublicFixtures(publicFixtures);
   const root = await mkdtemp(path.join(tmpdir(), "codeauditor-check-"));
   const baseline = new Map<string, string>();
   try {
-    let totalBytes = 0;
+    let totalBytes = fixtures.reduce(
+      (sum, fixture) => sum + Buffer.byteLength(fixture.text),
+      0,
+    );
     const files = await adapter.listFiles();
-    if (files.length > MAX_FILES)
+    if (files.length + fixtures.length > MAX_FILES)
       throw new Error(
         "Project check copy exceeds 10,000 files. Narrow the trusted project first.",
       );
@@ -155,6 +214,13 @@ export async function createCommandCopy(
       await mkdir(path.dirname(destination), { recursive: true });
       await writeFile(destination, document.text, { flag: "wx", mode: 0o600 });
       baseline.set(relative, document.text);
+    }
+    for (const fixture of fixtures) {
+      const destination = path.join(root, ...fixture.path.split("/"));
+      await mkdir(path.dirname(destination), { recursive: true });
+      // Never overwrite ordinary project data. These fixtures remain excluded
+      // from source collection by the unchanged dotenv filtering policy.
+      await writeFile(destination, fixture.text, { flag: "wx", mode: 0o600 });
     }
   } catch (error) {
     await rm(root, { recursive: true, force: true });

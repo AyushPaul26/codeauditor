@@ -84,7 +84,7 @@ The harness helper runs the **installed, lockfile-pinned TrueForge 0.184.2** CLI
 
 The committed [agent definition](../agents/codeauditor.json) selectively preloads read/search/retrieval/staging schemas. `request_apply` and `run_command` require human approval by literal tool name. TrueForge compaction triggers at an estimated 2,048 input tokens; oversized response offloading is disabled because there is no sandbox. These estimates require live evaluation with the actual model tokenizer and schema/history payload.
 
-The MCP bridge starts when the extension activates in a **trusted** workspace. Registration can succeed before the bridge starts; health endpoints alone do not prove tool readiness. Request a real file read and inspect the tool result in TrueForge after opening the extension. One active workspace can own a given MCP port. Port collisions fail explicitly; change `mcp.port`/the matching extension setting and reconfigure the connector, or close the other host.
+The MCP bridge starts when the extension activates in a **trusted** workspace. Registration can succeed before the bridge starts; health endpoints alone do not prove tool readiness. Request a real file read and inspect the tool result in TrueForge after opening the extension. One active workspace can own a given MCP port. Port collisions fail explicitly; change `mcp.port` in runtime.json and reconfigure the connector, or close the other host.
 
 If organisers require the manual `npx @truefoundry/trueforge@latest` quickstart, run that separately and close it before using this pinned harness on the same port.
 
@@ -109,6 +109,8 @@ uv sync --locked --no-default-groups --group tests --python 3.12
 Flask uses a **tests dependency group**, not a `.[test]` extra. The fixture's checked-in `uv.lock` is retained. The helper verifies the imported `flask.__file__`, runs baseline `tests/test_cli.py`, checks clean Git status again and writes version/baseline evidence outside the checkout. Python bytecode and pytest's cache are suppressed. The venv, uv cache, logs and standalone demo app live outside Flask. Do not add the demo app to Task C's clean fixture.
 
 The helper prints the exact external interpreter and fixture paths. Use that interpreter for verification. The extension selects the matching managed venv for managed fixtures; use its Python-path setting for other projects.
+
+Flask's public CLI tests intentionally include a dummy `tests/test_apps/.env`. The generic workspace secret filter still excludes live `.env` files. To reproduce those tests in an isolated command copy, preparation writes `fixture-data\flask-a.json` (or the chosen fixture name) outside the checkout. It records the canonical public Flask repository, pinned commit and only tracked `tests/**/.env` or `.env.*` Git blobs from that immutable commit. It verifies the origin, managed marker, HEAD and clean status; Git replacement objects are disabled. It never reads current `.env` contents or prints their values. The extension uses this verified public test data only inside the temporary command copy for the matching managed fixture, never as agent context. User secrets and live environment files remain excluded.
 
 ## F5, review and packaged installation
 

@@ -15,7 +15,7 @@ User approved implementation in chat. Existing repository was genuinely empty.
 - Development preview implemented. Native/model acceptance gates below remain open.
 - TrueForge 0.184.2 / SDK 0.184.1 exercised through actual local settings/session APIs.
 - Implemented MCP, retrieval, private per-hunk reviews, version guards, undo, bounded command copies, streaming and guarded fallback.
-- Latest deterministic suite: 180 passed. Browser UI: 5 passed. Actual TrueForge/MCP protocol with scripted provider: 4 passed (not model-intelligence evidence).
+- Latest deterministic suite: 212 passed. Browser UI: 5 passed. Actual TrueForge/MCP protocol with scripted provider: 4 passed (not model-intelligence evidence).
 - Pinned Flask baseline: 58 passed twice with uv 0.9.28/Python 3.12.14; source clean including untracked files.
 - Typecheck, build, strict UI audit and VSIX packaging passed. DESIGN.md lint: zero errors, advisory token warnings.
 - Review regressions fixed: partial approval batches, stale-document preflight, cancellation before commit, staged-newfile omission, deferred call_tool approval routing, runtime URL override, duplicate initial starts.
@@ -38,3 +38,9 @@ User approved implementation in chat. Existing repository was genuinely empty.
 3. Run native F5/VSIX tests and Windows process-tree cancellation.
 4. Rehearse exact A/B/C with genuine models and repeat on fresh fixtures.
 5. Complete team details, real video timestamps, final PDF and public portal submission. Drafts mark missing evidence honestly.
+
+## Final review fixes
+
+An independent whole-build review found three important issues. Regression tests reproduced each before correction: deletion-on-undo now rechecks document versions; applying/undoing changes cancels stale sibling proposals and allows fresh staging; dismissing discard restores the host UI state while preserving previous proposals. No Critical finding was established. Native/model gates above remain open.
+
+The actual command-copy integration initially passed 57 of 58 Flask CLI tests: the secret filter also excluded a public dotenv test fixture. Setup now extracts that fixture from the immutable public Git object into external metadata. Command copies inject only those verified bytes, without reading live .env files. Provenance, path and size checks pass, and all 58 CLI tests pass in the copy while the original source stays clean. This prepares test data; it does not implement the agent task.

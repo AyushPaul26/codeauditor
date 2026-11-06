@@ -51,6 +51,25 @@ afterEach(async () => {
 });
 
 describe("real controlled Python subprocesses", () => {
+  it("supplies explicit public dotenv test data only to the temporary subprocess", async () => {
+    const adapter = await fixture({
+      "pytest.py":
+        'from pathlib import Path\nassert Path("tests/test_apps/.env").read_text() == "PUBLIC_TEST=fixture\\n"\nassert not Path(".env").exists()\nPath("tests/test_apps/.env").write_text("changed\\n")\n',
+      "tests/test_apps/.env": "PRIVATE_LIVE_VALUE=do not copy\n",
+      ".env": "PRIVATE_ROOT=do not copy\n",
+    });
+    const result = await new CommandRunner(adapter, {
+      pythonPath,
+      publicFixtures: [
+        { path: "tests/test_apps/.env", text: "PUBLIC_TEST=fixture\n" },
+      ],
+    }).run({ executable: "pytest", args: [], runId: "public-fixture" });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.changes).toEqual([]);
+    expect(
+      await readFile(path.join(adapter.root, "tests/test_apps/.env"), "utf8"),
+    ).toBe("PRIVATE_LIVE_VALUE=do not copy\n");
+  });
   it("checks syntax without creating caches in the original workspace", async () => {
     const adapter = await fixture({ "src/a file.py": "value = 1\n" });
     const result = await new CommandRunner(adapter, { pythonPath }).run({

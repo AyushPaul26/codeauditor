@@ -83,6 +83,75 @@ describe("temporary command copy", () => {
     expect(await copy.collectChanges()).toEqual([]);
   });
 
+  it("injects explicit public dotenv fixtures without reading or proposing workspace secrets", async () => {
+    const workspace = adapter({
+      "tests/test_apps/.env": "LIVE_SECRET=private\n",
+      ".env": "ROOT_SECRET=private\n",
+    });
+    workspace.read = async () => {
+      throw new Error("Workspace dotenv files must remain filtered");
+    };
+    const copy = await createCommandCopy(workspace, undefined, [
+      { path: "tests/test_apps/.env", text: "PUBLIC_TEST_VALUE=fixture\n" },
+    ]);
+    roots.push(copy.root);
+    expect(
+      await readFile(path.join(copy.root, "tests/test_apps/.env"), "utf8"),
+    ).toBe("PUBLIC_TEST_VALUE=fixture\n");
+    await expect(readFile(path.join(copy.root, ".env"))).rejects.toThrow();
+    await writeFile(
+      path.join(copy.root, "tests/test_apps/.env"),
+      "changed during test\n",
+    );
+    expect(await copy.collectChanges()).toEqual([]);
+  });
+
+  it.each([
+    ".env",
+    "src/.env",
+    "../tests/.env",
+    "tests/../.env",
+    "/tests/.env",
+    "tests/app.py",
+    "tests/.env.local:stream",
+    "tests/node_modules/.env",
+    "C:\\tests\\.env",
+    "tests/CON/.env",
+  ])("rejects unsafe public fixture destinations: %s", async (destination) => {
+    await expect(
+      createCommandCopy(adapter({}), undefined, [
+        { path: destination, text: "public\n" },
+      ]),
+    ).rejects.toThrow(/fixture|relative/i);
+  });
+
+  it("rejects oversized public fixture text", async () => {
+    await expect(
+      createCommandCopy(adapter({}), undefined, [
+        { path: "tests/.env", text: "a".repeat(1024 * 1024 + 1) },
+      ]),
+    ).rejects.toThrow(/1 MiB|fixture/i);
+  });
+
+  it("includes public fixtures in the total copy byte limit", async () => {
+    const fixtures = Array.from({ length: 33 }, (_, index) => ({
+      path: `tests/.env.${index}`,
+      text: "a".repeat(1024 * 1024),
+    }));
+    await expect(
+      createCommandCopy(adapter({}), undefined, fixtures),
+    ).rejects.toThrow(/32 MiB/i);
+  });
+
+  it("rejects duplicate normalized public fixture destinations", async () => {
+    await expect(
+      createCommandCopy(adapter({}), undefined, [
+        { path: "tests/.env", text: "first" },
+        { path: "tests\\.env", text: "second" },
+      ]),
+    ).rejects.toThrow(/duplicate|exist/i);
+  });
+
   it("does not follow command-created symlinks when collecting source changes", async () => {
     const copy = await createCommandCopy(adapter({ "app.py": "value = 1\n" }));
     roots.push(copy.root);

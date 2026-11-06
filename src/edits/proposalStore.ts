@@ -37,6 +37,8 @@ export interface ApplyResult {
   readonly acceptedIds: readonly string[];
   readonly rejectedIds: readonly string[];
   readonly paths: readonly string[];
+  readonly invalidatedProposalIds: readonly string[];
+  readonly message?: string;
 }
 
 interface StoredProposal {
@@ -193,6 +195,7 @@ export class ProposalStore {
         (hunk) => review.get(hunk.id) === "reject",
       );
       const changes = composeChanges(entry.bases, accepted);
+      let invalidatedProposalIds: string[] = [];
       const before = new Map<string, DocumentSnapshot>();
       for (const change of changes)
         before.set(change.path, entry.bases.get(change.path)!);
@@ -200,6 +203,12 @@ export class ProposalStore {
         // Recheck approval after the adapter's async version checks, immediately
         // before its atomic commit. Cancellation after that point cannot undo a commit.
         await this.adapter.apply(changes, assertCurrentApproval);
+        this.setStatus(entry, "applied");
+        entry.review = undefined;
+        invalidatedProposalIds = this.invalidateSiblingProposals(
+          proposalId,
+          new Set(changes.map((change) => change.path)),
+        );
         const after = new Map<string, DocumentSnapshot>();
         for (const change of changes) {
           const snapshot = await this.readSnapshot(change.path);
@@ -221,6 +230,13 @@ export class ProposalStore {
         acceptedIds: Object.freeze(accepted.map((hunk) => hunk.id)),
         rejectedIds: Object.freeze(rejected.map((hunk) => hunk.id)),
         paths: Object.freeze(changes.map((change) => change.path)),
+        invalidatedProposalIds: Object.freeze(invalidatedProposalIds),
+        ...(invalidatedProposalIds.length
+          ? {
+              message:
+                "Other pending proposals for the changed files were cancelled because their bases changed. Read the current files and stage fresh proposals for a new review.",
+            }
+          : {}),
       });
     });
   }
@@ -253,6 +269,10 @@ export class ProposalStore {
         }),
       );
       await this.adapter.apply(changes);
+      this.invalidateSiblingProposals(
+        undefined,
+        new Set(changes.map((change) => change.path)),
+      );
       this.undoEntries.pop();
       // Undo itself changes version identities. Refresh a preceding undo only when its
       // exact expected text has been restored, so sequential undo stays safe.
@@ -311,6 +331,26 @@ export class ProposalStore {
   private assertRunActive(runId: string): void {
     if (this.cancelledRuns.has(runId))
       throw new Error("Run has been cancelled");
+  }
+
+  private invalidateSiblingProposals(
+    appliedProposalId: string | undefined,
+    changedPaths: ReadonlySet<string>,
+  ): string[] {
+    const invalidated: string[] = [];
+    for (const entry of this.proposals.values()) {
+      const proposal = entry.proposal;
+      if (
+        proposal.id === appliedProposalId ||
+        (proposal.status !== "pending" && proposal.status !== "reviewed") ||
+        ![...changedPaths].some((path) => entry.bases.has(path))
+      )
+        continue;
+      entry.review = undefined;
+      this.setStatus(entry, "cancelled");
+      invalidated.push(proposal.id);
+    }
+    return invalidated;
   }
 
   private requireProposal(id: string): StoredProposal {

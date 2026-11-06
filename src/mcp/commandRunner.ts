@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   commandRelativePath,
   createCommandCopy,
+  type PublicCommandFixture,
 } from "../workspace/commandCopy";
 
 export interface CommandRequest {
@@ -21,6 +22,7 @@ export interface CommandResult {
 export interface CommandRunnerOptions {
   pythonPath?: string;
   timeoutMs?: number;
+  publicFixtures?: ReadonlyArray<PublicCommandFixture>;
   overlay?: (
     path: string,
   ) => Promise<{ path: string; text: string; version: string }>;
@@ -247,7 +249,11 @@ export class CommandRunner {
           cancelled: true,
           changes: [],
         };
-      copy = await createCommandCopy(this.adapter, this.options.overlay);
+      copy = await createCommandCopy(
+        this.adapter,
+        this.options.overlay,
+        this.options.publicFixtures,
+      );
       if (state.cancelled)
         return {
           exitCode: null,

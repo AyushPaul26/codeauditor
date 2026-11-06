@@ -3,6 +3,7 @@ import path from "node:path";
 import { access } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { readRuntime, localRuntimeDir, type LocalRuntime } from "./config";
+import { loadPublicFixtures } from "./workspace/publicFixtures";
 import { VscodeWorkspace } from "./workspace/vscodeAdapter";
 import { ProposalStore, type ReviewDecision } from "./edits/proposalStore";
 import { CommandRunner } from "./mcp/commandRunner";
@@ -96,7 +97,14 @@ export class Application implements vscode.Disposable {
         /* use the configured system Python */
       }
     }
-    this.commands = new CommandRunner(overlayAdapter, { pythonPath });
+    const publicFixtures = await loadPublicFixtures(
+      source.root,
+      localRuntimeDir(),
+    );
+    this.commands = new CommandRunner(overlayAdapter, {
+      pythonPath,
+      publicFixtures,
+    });
     this.server = await startWorkspaceServer({
       adapter: source,
       proposals: store,
@@ -186,7 +194,15 @@ export class Application implements vscode.Disposable {
           { modal: true },
           "Discard proposals",
         );
-        if (choice !== "Discard proposals") return;
+        if (choice !== "Discard proposals") {
+          this.panel.update({
+            busy: false,
+            status: "Previous proposals kept",
+            error: undefined,
+          });
+          this.syncProposals();
+          return;
+        }
       }
       if (this.runId) this.proposals?.cancelRun(this.runId);
       this.runId = randomUUID();
@@ -497,7 +513,7 @@ export class Application implements vscode.Disposable {
     if (!instruction?.trim()) return;
     await vscode.commands.executeCommand("codeauditor.agent.focus");
     await this.start(
-      `${instruction}\n\nSelected region in @file:${relative}, lines ${editor.selection.start.line + 1}-${editor.selection.end.line + 1}. Read the file before staging an exact replacement.\n<selected_code>\n${text}\n</selected_code>`,
+      `${instruction}\n\nSelected region in @file:${JSON.stringify(relative)}, lines ${editor.selection.start.line + 1}-${editor.selection.end.line + 1}. Read the file before staging an exact replacement.\n<selected_code>\n${text}\n</selected_code>`,
     );
   }
   dispose(): void {

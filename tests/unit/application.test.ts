@@ -248,12 +248,14 @@ describe("Application review and lifecycle", () => {
         acceptedIds: [first.hunks[0]!.id],
         rejectedIds: [first.hunks[1]!.id],
         paths: ["a.ts"],
+        invalidatedProposalIds: [],
       },
       {
         proposalId: second.id,
         acceptedIds: [second.hunks[1]!.id],
         rejectedIds: [second.hunks[0]!.id],
         paths: ["b.ts"],
+        invalidatedProposalIds: [],
       },
     ]);
     expect(app.panel.state.busy).toBe(false);
@@ -421,6 +423,38 @@ describe("Application review and lifecycle", () => {
     );
     expect(host.run).toHaveBeenCalledTimes(1);
     expect(bridge().getSignal?.()).toBe(activeSignal);
+  });
+
+  it("restores the idle sidebar when the user keeps unapproved proposals instead of starting a new task", async () => {
+    let proposal!: Proposal;
+    host.run.mockImplementation(async function* () {
+      proposal = await bridge().proposals.stage(runId(), [
+        { path: "a.ts", oldText: "alpha", newText: "ALPHA" },
+      ]);
+      yield done();
+    });
+    await app.start("Suggest an edit for me to review.");
+    const activeSignal = bridge().getSignal?.();
+    const activeRunId = runId();
+    const update = vi.spyOn(app.panel, "update");
+
+    // The sidebar sets its own busy state while it sends this request. Dismissing
+    // the host's discard prompt must send the existing idle state back to it.
+    await app.start("Start a different task.");
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ busy: false }),
+    );
+    expect(app.panel.state.busy).toBe(false);
+    expect(app.panel.state.proposals).toEqual([
+      expect.objectContaining({ id: proposal.id, status: "pending" }),
+    ]);
+    expect(bridge().proposals.get(proposal.id)?.status).toBe("pending");
+    expect(bridge().getSignal?.()).toBe(activeSignal);
+    expect(activeSignal?.aborted).toBe(false);
+    expect(runId()).toBe(activeRunId);
+    expect(host.run).toHaveBeenCalledTimes(1);
+    expect(host.created).toHaveBeenCalledTimes(1);
   });
 
   it("blocks simultaneous initial starts before workspace boot finishes", async () => {

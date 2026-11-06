@@ -30,3 +30,7 @@ Record the final inference distribution release tag/commit, publisher digest, ex
 Also record first-token time, cancellation acknowledgement time, process-tree termination time, schema bytes/tokens and the TrueForge session IDs for successful and failed runs. Save `nvidia-smi` observations and Windows process memory measurements outside the fixture. Calculate task success as successful fresh runs divided by all attempted fresh runs; report the failure cause for every unsuccessful attempt.
 
 Provider portability needs two kinds of evidence: deterministic configuration/SDK tests, and the same task with a second genuinely tool-capable model. The latter is pending. An external provider check requires authorised credentials and remains unrun; no hosted-model cost has been incurred by this setup. Local inference has no per-token service fee, with hardware/electricity costs unmeasured.
+
+## Additional executed protocol and fixture checks
+
+The actual TrueForge/MCP protocol suite has four passing checks using a controlled scripted provider: real reads, eager and deferred approvals, accepted/rejected subset application and undo. These are not model-intelligence evidence. The CommandRunner also executes all 58 pinned Flask CLI tests successfully against its temporary source copy, verifies imports come from that copy and leaves the original fixture clean. Public dummy dotenv data comes only from the immutable public Git blob; live secret files remain excluded.

@@ -1,5 +1,8 @@
 import path from "node:path";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
 import {
   ensureRuntime,
   isMain,
@@ -9,6 +12,10 @@ import {
 } from "./runtime.mjs";
 
 export const FLASK_COMMIT = "22d924701a6ae2e4cd01e9a15bbaf3946094af65";
+export const FLASK_SOURCE = Object.freeze({
+  repository: "https://github.com/pallets/flask.git",
+  ref: "3.1.3",
+});
 export const UV_VERSION = "0.9.28";
 export function fixturePaths(dir, name) {
   if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(name))
@@ -20,6 +27,7 @@ export function fixturePaths(dir, name) {
     venv: path.join(dir, "venvs", `flask-${name}`),
     demo: path.join(dir, "demos", `flask-${name}`),
     evidence: path.join(dir, "logs", `fixture-${name}.json`),
+    publicData: path.join(dir, "fixture-data", `flask-${name}.json`),
   };
 }
 function pythonInvocation() {
@@ -117,6 +125,91 @@ export async function assertReusableFixture(fixture) {
       `Fixture contains changes, including untracked files. Preserving ${fixture}; create a new clean run with --name a-2 (or b-2/c-2).`,
     );
 }
+export async function generatePublicFixtures(paths) {
+  const origin = await run("git", ["remote", "get-url", "origin"], {
+    cwd: paths.fixture,
+  });
+  if (origin !== FLASK_SOURCE.repository)
+    throw new Error(
+      "Cannot generate public test fixture metadata: repository origin must be the canonical public Flask repository.",
+    );
+  await assertReusableFixture(paths.fixture);
+  const destination = path.join(
+    path.dirname(path.dirname(paths.fixture)),
+    "fixture-data",
+    `${path.basename(paths.fixture)}.json`,
+  );
+  if (path.resolve(paths.publicData) !== path.resolve(destination))
+    throw new Error(
+      "Public fixture metadata must stay outside the fixture source.",
+    );
+  const execute = promisify(execFile);
+  const gitBlob = async (args) => {
+    try {
+      const result = await execute("git", ["--no-replace-objects", ...args], {
+        cwd: paths.fixture,
+        encoding: "buffer",
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+      });
+      return result.stdout;
+    } catch (error) {
+      throw new Error(
+        "Cannot read the pinned public Flask test fixture Git objects.",
+        {
+          cause: error,
+        },
+      );
+    }
+  };
+  const tree = new TextDecoder("utf-8", { fatal: true }).decode(
+    await gitBlob(["ls-tree", "-r", "-z", FLASK_COMMIT, "--", "tests"]),
+  );
+  const files = [];
+  let totalBytes = 0;
+  for (const entry of tree.split("\0")) {
+    if (!entry) continue;
+    const match = /^(100644|100755) blob [a-f0-9]{40}\t(.+)$/.exec(entry);
+    if (!match) continue;
+    const relative = match[2];
+    if (
+      !/^tests\/(?:[A-Za-z0-9_.-]+\/)*\.env(?:\.[A-Za-z0-9_.-]+)?$/.test(
+        relative,
+      ) ||
+      relative.split("/").some((part) => part === "." || part === "..")
+    )
+      continue;
+    // Read the immutable tree, even when a checkout later contains private values.
+    const bytes = await gitBlob(["show", `${FLASK_COMMIT}:${relative}`]);
+    totalBytes += bytes.length;
+    if (
+      bytes.length > 64 * 1024 ||
+      totalBytes > 128 * 1024 ||
+      files.length >= 32
+    )
+      throw new Error(
+        "Pinned public environment test fixtures exceed the metadata limit.",
+      );
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (text.includes("\0"))
+      throw new Error("Pinned public environment fixture must be UTF-8 text.");
+    files.push({ path: relative, text });
+  }
+  const metadata = {
+    version: 1,
+    commit: FLASK_COMMIT,
+    source: FLASK_SOURCE,
+    files: files.sort((a, b) => a.path.localeCompare(b.path)),
+  };
+  await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+  const temporary = `${destination}.${randomBytes(8).toString("hex")}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(metadata, null, 2)}\n`, {
+    mode: 0o600,
+    flag: "wx",
+  });
+  await rename(temporary, destination);
+  return metadata;
+}
 export async function prepareFixture({
   dir = runtimeDir(),
   name = "a",
@@ -142,7 +235,7 @@ export async function prepareFixture({
         "--branch",
         "3.1.3",
         "--single-branch",
-        "https://github.com/pallets/flask.git",
+        FLASK_SOURCE.repository,
         staging,
       ],
       { inherit: true },
@@ -206,6 +299,7 @@ export async function prepareFixture({
     inherit: true,
   });
   await assertReusableFixture(paths.fixture);
+  await generatePublicFixtures(paths);
   await mkdir(paths.demo, { recursive: true, mode: 0o700 });
   const demoFile = path.join(paths.demo, "app.py");
   try {

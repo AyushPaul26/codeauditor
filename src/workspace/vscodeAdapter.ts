@@ -95,10 +95,6 @@ export class VscodeWorkspace implements WorkspaceAdapter {
     for (const { change } of prepared) {
       const full = await resolveWorkspacePath(this.root, change.path),
         uri = vscode.Uri.file(full);
-      if (change.delete) {
-        edit.deleteFile(uri, { ignoreIfNotExists: false });
-        continue;
-      }
       const doc = await vscode.workspace.openTextDocument(uri);
       // Compare the final text/version again after async path/document resolution.
       const current = {
@@ -109,6 +105,10 @@ export class VscodeWorkspace implements WorkspaceAdapter {
       if (current.version !== change.expectedVersion)
         throw new Error(`Document changed during review: ${change.path}`);
       checkedDocuments.push({ doc, change });
+      if (change.delete) {
+        edit.deleteFile(uri, { ignoreIfNotExists: false });
+        continue;
+      }
       edit.replace(
         uri,
         new vscode.Range(

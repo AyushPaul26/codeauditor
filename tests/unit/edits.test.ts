@@ -470,4 +470,153 @@ describe("reviewed proposal edits", () => {
     );
     expect(store.list()).toHaveLength(2);
   });
+
+  it("invalidates sibling bases after applying while allowing fresh staging and unrelated reviews", async () => {
+    const workspace = new MemoryWorkspace({
+      "a.ts": "one\nkeep\ntwo\n",
+      "b.ts": "unrelated",
+    });
+    const store = new ProposalStore(workspace);
+    const first = await store.stage("run", [
+      { path: "a.ts", oldText: "one", newText: "ONE" },
+    ]);
+    const sibling = await store.stage("run", [
+      { path: "a.ts", oldText: "two", newText: "TWO" },
+    ]);
+    const otherRunSibling = await store.stage("another-run", [
+      { path: "a.ts", oldText: "one", newText: "another proposal" },
+    ]);
+    const unrelated = await store.stage("run", [
+      { path: "b.ts", oldText: "unrelated", newText: "UNRELATED" },
+    ]);
+    for (const proposal of [first, sibling, unrelated])
+      store.review(proposal.id, { [proposal.hunks[0]!.id]: "accept" });
+
+    const result = await store.apply(first.id);
+    expect(store.get(sibling.id)?.status).toBe("cancelled");
+    expect(store.get(otherRunSibling.id)?.status).toBe("cancelled");
+    expect(result.invalidatedProposalIds).toEqual([
+      sibling.id,
+      otherRunSibling.id,
+    ]);
+    expect(result.message).toMatch(/read.*stag/i);
+    expect(store.get(first.id)?.status).toBe("applied");
+    expect(store.get(unrelated.id)?.status).toBe("reviewed");
+    await expect(store.apply(sibling.id)).rejects.toThrow(/cancel/i);
+    expect(() =>
+      store.review(sibling.id, { [sibling.hunks[0]!.id]: "accept" }),
+    ).toThrow(/cancel/i);
+    expect((await store.readOverlay("a.ts", "run")).text).toBe(
+      "ONE\nkeep\ntwo\n",
+    );
+
+    const fresh = await store.stage("run", [
+      { path: "a.ts", oldText: "two", newText: "TWO" },
+    ]);
+    expect((await store.readOverlay("a.ts", "run")).text).toBe(
+      "ONE\nkeep\nTWO\n",
+    );
+    store.review(fresh.id, { [fresh.hunks[0]!.id]: "accept" });
+    expect((await store.apply(fresh.id)).invalidatedProposalIds).toEqual([]);
+    await store.apply(unrelated.id);
+    expect((await workspace.read("b.ts")).text).toBe("UNRELATED");
+  });
+
+  it("invalidates sibling bases even when a later user edit prevents safe undo capture", async () => {
+    class PostCommitEditWorkspace extends MemoryWorkspace {
+      async apply(edits: WorkspaceChange[], preCommit?: () => void) {
+        preCommit?.();
+        await super.apply(edits);
+        this.userEdit("a.ts", "later user work");
+      }
+    }
+    const workspace = new PostCommitEditWorkspace({ "a.ts": "one\ntwo\n" });
+    const store = new ProposalStore(workspace);
+    const first = await store.stage("run", [
+      { path: "a.ts", oldText: "one", newText: "ONE" },
+    ]);
+    const sibling = await store.stage("run", [
+      { path: "a.ts", oldText: "two", newText: "TWO" },
+    ]);
+    for (const proposal of [first, sibling])
+      store.review(proposal.id, { [proposal.hunks[0]!.id]: "accept" });
+    await expect(store.apply(first.id)).rejects.toThrow(/applied.*undo/i);
+    expect(store.get(first.id)?.status).toBe("applied");
+    expect(store.get(sibling.id)?.status).toBe("cancelled");
+    await expect(store.apply(sibling.id)).rejects.toThrow(/cancel/i);
+    expect((await store.readOverlay("a.ts", "run")).text).toBe(
+      "later user work",
+    );
+  });
+
+  it("marks committed proposals applied and invalidates siblings before reading undo snapshots", async () => {
+    class PostCommitReadFailureWorkspace extends MemoryWorkspace {
+      private failNextRead = false;
+      async read(path: string) {
+        if (this.failNextRead) {
+          this.failNextRead = false;
+          throw new Error("Snapshot unavailable after commit");
+        }
+        return super.read(path);
+      }
+      async apply(edits: WorkspaceChange[], preCommit?: () => void) {
+        preCommit?.();
+        await super.apply(edits);
+        this.failNextRead = true;
+      }
+    }
+    const workspace = new PostCommitReadFailureWorkspace({
+      "a.ts": "one\ntwo\n",
+    });
+    const store = new ProposalStore(workspace);
+    const first = await store.stage("run", [
+      { path: "a.ts", oldText: "one", newText: "ONE" },
+    ]);
+    const sibling = await store.stage("run", [
+      { path: "a.ts", oldText: "two", newText: "TWO" },
+    ]);
+    store.review(first.id, { [first.hunks[0]!.id]: "accept" });
+    await expect(store.apply(first.id)).rejects.toThrow(
+      /snapshot unavailable/i,
+    );
+    expect(store.get(first.id)?.status).toBe("applied");
+    expect(store.get(sibling.id)?.status).toBe("cancelled");
+    await expect(store.apply(first.id)).rejects.toThrow(/applied|replay/i);
+    expect((await store.readOverlay("a.ts", "run")).text).toBe("ONE\ntwo\n");
+  });
+
+  it("invalidates proposals based on undone text while preserving unrelated pending proposals and earlier user work", async () => {
+    const workspace = new MemoryWorkspace({
+      "a.ts": "// earlier user work\none\n",
+      "b.ts": "other",
+    });
+    const store = new ProposalStore(workspace);
+    const applied = await store.stage("run", [
+      { path: "a.ts", oldText: "one", newText: "ONE" },
+    ]);
+    store.review(applied.id, { [applied.hunks[0]!.id]: "accept" });
+    await store.apply(applied.id);
+    const invalidated = await store.stage("run", [
+      { path: "a.ts", oldText: "ONE", newText: "TWO" },
+    ]);
+    store.review(invalidated.id, { [invalidated.hunks[0]!.id]: "accept" });
+    const unrelated = await store.stage("run", [
+      { path: "b.ts", oldText: "other", newText: "OTHER" },
+    ]);
+
+    await store.undoLast();
+    expect((await workspace.read("a.ts")).text).toBe(
+      "// earlier user work\none\n",
+    );
+    expect(store.get(invalidated.id)?.status).toBe("cancelled");
+    await expect(store.apply(invalidated.id)).rejects.toThrow(/cancel/i);
+    expect(store.get(unrelated.id)?.status).toBe("pending");
+    expect((await store.readOverlay("b.ts", "run")).text).toBe("OTHER");
+    await store.stage("run", [
+      { path: "a.ts", oldText: "one", newText: "fresh" },
+    ]);
+    expect((await store.readOverlay("a.ts", "run")).text).toBe(
+      "// earlier user work\nfresh\n",
+    );
+  });
 });

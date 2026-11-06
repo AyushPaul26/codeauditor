@@ -243,11 +243,18 @@ describe("model and TrueForge configuration", () => {
 
 describe("managed fixture setup", () => {
   test("pins the exact fixture commit and keeps Python and demos outside source", async () => {
-    const { FLASK_COMMIT, fixturePaths, uvBinaryPath } =
+    const { FLASK_COMMIT, FLASK_SOURCE, fixturePaths, uvBinaryPath } =
       await script("prepareFixture");
     expect(FLASK_COMMIT).toBe("22d924701a6ae2e4cd01e9a15bbaf3946094af65");
+    expect(FLASK_SOURCE).toEqual({
+      repository: "https://github.com/pallets/flask.git",
+      ref: "3.1.3",
+    });
     const paths = fixturePaths("/runtime", "c");
     expect(paths.fixture).toBe(path.join("/runtime", "fixtures", "flask-c"));
+    expect(paths.publicData).toBe(
+      path.join("/runtime", "fixture-data", "flask-c.json"),
+    );
     expect(paths.venv.startsWith(paths.fixture + path.sep)).toBe(false);
     expect(paths.demo.startsWith(paths.fixture + path.sep)).toBe(false);
     expect(() => fixturePaths("/runtime", "../user")).toThrow(/name/);
@@ -266,5 +273,25 @@ describe("managed fixture setup", () => {
       /managed|existing/,
     );
     expect(await readFile(path.join(dir, "user.txt"), "utf8")).toBe("preserve");
+  });
+  test("refuses public fixture metadata when the repository origin was changed", async () => {
+    const { generatePublicFixtures, fixturePaths } =
+      await script("prepareFixture");
+    const { mkdir } = await import("node:fs/promises");
+    const dir = await temporary();
+    const paths = fixturePaths(dir, "a");
+    await mkdir(paths.fixture, { recursive: true });
+    await promisify(execFile)("git", ["init", paths.fixture]);
+    await promisify(execFile)(
+      "git",
+      ["remote", "add", "origin", "https://example.invalid/pallets/flask.git"],
+      { cwd: paths.fixture },
+    );
+    await expect(generatePublicFixtures(paths)).rejects.toThrow(
+      /origin|public repository/,
+    );
+    await expect(
+      readFile(path.join(dir, "fixture-data", "flask-a.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
